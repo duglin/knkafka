@@ -1,0 +1,6 @@
+FROM golang:alpine
+COPY service.go /
+RUN go build -o /service /service.go
+FROM alpine
+COPY --from=0 /service /service
+CMD /service

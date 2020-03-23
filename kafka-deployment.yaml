@@ -1,0 +1,29 @@
+kind: Deployment
+apiVersion: extensions/v1beta1
+metadata:
+  name: kafka-broker0
+spec:
+  template:
+    metadata:
+      labels:
+        app: kafka
+    spec:
+      containers:
+      - name: kafka
+        # image: bitnami/kafka
+        image: wurstmeister/kafka
+        ports:
+        - containerPort: 9092
+        env:
+        - name: KAFKA_ADVERTISED_PORT
+          value: "MY_PORT"
+        - name: KAFKA_ADVERTISED_HOST_NAME
+          value: MY_IP
+        - name: KAFKA_ZOOKEEPER_CONNECT
+          value: zoo1:2181
+        - name: KAFKA_BROKER_ID
+          value: "0"
+        # - name: KAFKA_CREATE_TOPICS
+          # value: t1:2:1,t2:2:1
+        - name: ALLOW_PLAINTEXT_LISTENER
+          value: "yes"

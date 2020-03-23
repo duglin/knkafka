@@ -1,0 +1,6 @@
+FROM golang:alpine
+COPY console.go /
+RUN go build -o /console /console.go
+FROM alpine
+COPY --from=0 /console /console
+CMD /console

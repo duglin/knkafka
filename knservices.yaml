@@ -1,0 +1,23 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: knkafkaconsole
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: "1"
+        autoscaling.knative.dev/minScale: "1"
+    spec:
+      containers:
+      - image: duglin/knkafkaconsole
+---
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: knkafkaservice
+spec:
+  template:
+    spec:
+      containers:
+      - image: duglin/knkafkaservice

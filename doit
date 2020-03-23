@@ -1,0 +1,62 @@
+#!/bin/bash
+set -e
+
+partitions=250
+load=250000
+url=http://knkafkaconsole-default.kndev.us-south.containers.appdomain.cloud/
+
+echo Cleaning...
+./admin del-topic u1t1 > /dev/null 2>&1 || true
+./admin del-topic u1t2 > /dev/null 2>&1 || true
+./admin del-topic u1t1 > /dev/null 2>&1 || true
+./admin del-topic u2t2 > /dev/null 2>&1 || true
+kubectl delete -f source.yaml > /dev/null 2>&1 || true
+curl -s http://knkafkaconsole-default.kndev.us-south.containers.appdomain.cloud?clear=1
+
+echo Hit enter to load
+read a
+
+echo Adding topic and sleep for 5
+./admin add-topic u1t1 ${partitions}
+# ./admin add-topic u1t2 ${partitions}
+# ./admin add-topic u2t1 ${partitions}
+# ./admin add-topic u2t2 ${partitions}
+sleep 5
+
+echo
+echo Loading ${load} messages
+echo "Start date: `date`"
+./admin load u1t1 ${load}
+# ./admin load u1t2 ${load}
+# ./admin load u2t1 ${load}
+# ./admin load u2t2 ${load}
+echo "End   date: `date`"
+
+echo How many were actually added
+# ./admin | grep u1t1.*size
+count=$(./admin | grep u1t1.*size | sed "s/^.*size: \([0-9]*\).*$/\1/")
+echo "--> ${count}"
+echo
+
+echo Hit enter to start processing...
+read a
+
+echo Creating Kafka event source
+SERVER=$(kubectl describe service/kafka-service | grep Ingress | sed "s/.*: *//")
+cat source.yaml | sed "s/SERVER/$SERVER/g" | kubectl apply -f -
+echo
+
+echo "Waiting for it to finish..."
+echo "Start date: `date`"
+while true ; do
+  out=$(curl -qs ${url} | grep Total)
+  echo -n ${out} | sed "s/^.*: \([0-9]*\).*$/\1,/g"
+  echo ${out} | grep " ${count}\$" > /dev/null && break
+  sleep 5
+done
+echo
+echo "End   date: `date`"
+
+echo
+echo Check the pod logs for errors
+kubectl logs -l serving.knative.dev/service=knkafkaservice -c user-container 
