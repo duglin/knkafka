@@ -42,3 +42,4 @@ clean:
 	-kubectl delete -f kafka-deployment.yaml
 	-kubectl delete -f kafka-service.yaml
 	-kubectl delete -f zookeeper.yaml
+	-rm -f .knkafkaconsole .knkafkaservice .server

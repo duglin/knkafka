@@ -1,41 +1,56 @@
 #!/bin/bash
 set -e
 
-partitions=250
-load=250000
+partitions=200     # 250
+load=5000         # 250000
+users=10
+topics=2
+numMsgs=$(( ${users} * ${topics} * ${load} ))
+
 url=http://knkafkaconsole-default.kndev.us-south.containers.appdomain.cloud/
 
 echo Cleaning...
-./admin del-topic u1t1 > /dev/null 2>&1 || true
-./admin del-topic u1t2 > /dev/null 2>&1 || true
-./admin del-topic u1t1 > /dev/null 2>&1 || true
-./admin del-topic u2t2 > /dev/null 2>&1 || true
-kubectl delete -f source.yaml > /dev/null 2>&1 || true
 curl -s http://knkafkaconsole-default.kndev.us-south.containers.appdomain.cloud?clear=1
+seq 1 ${users} | while read u ; do
+  seq 1 ${topics} | while read t ; do
+    ./admin del-topic u${u}t${t} > /dev/null 2>&1 || true
+  done
+done
+kubectl delete -f source.yaml > /dev/null 2>&1 || true
 
 echo Hit enter to load
 read a
 
 echo Adding topic and sleep for 5
-./admin add-topic u1t1 ${partitions}
-# ./admin add-topic u1t2 ${partitions}
-# ./admin add-topic u2t1 ${partitions}
-# ./admin add-topic u2t2 ${partitions}
+sourceTopics=$(
+seq 1 ${users} | while read u ; do
+  seq 1 ${topics} | while read t ; do
+    ./admin add-topic u${u}t${t} ${partitions}
+	echo -n "u${u}t${t},"
+  done
+done
+)
+
+sourceTopics=${sourceTopics%,}
+
+echo sourceTopics:${sourceTopics}
 sleep 5
 
 echo
 echo Loading ${load} messages
 echo "Start date: `date`"
-./admin load u1t1 ${load}
-# ./admin load u1t2 ${load}
-# ./admin load u2t1 ${load}
-# ./admin load u2t2 ${load}
+seq 1 ${users} | while read u ; do
+  seq 1 ${topics} | while read t ; do
+    ./admin load u${u}t${t} ${load}
+  done
+done
 echo "End   date: `date`"
 
 echo How many were actually added
 # ./admin | grep u1t1.*size
-count=$(./admin | grep u1t1.*size | sed "s/^.*size: \([0-9]*\).*$/\1/")
+count=$(./admin | grep "u[0-9]*t[0-9]*.*size" | sed "s/^.*size: \([0-9]*\).*$/\1/")
 echo "--> ${count}"
+echo "Should be: ${numMsgs}"
 echo
 
 echo Hit enter to start processing...
@@ -43,7 +58,8 @@ read a
 
 echo Creating Kafka event source
 SERVER=$(kubectl describe service/kafka-service | grep Ingress | sed "s/.*: *//")
-cat source.yaml | sed "s/SERVER/$SERVER/g" | kubectl apply -f -
+cat source.yaml | sed "s/SERVER/$SERVER/g" | sed "s/TOPICS/${sourceTopics}/" | \
+	kubectl apply -f -
 echo
 
 echo "Waiting for it to finish..."
@@ -51,7 +67,7 @@ echo "Start date: `date`"
 while true ; do
   out=$(curl -qs ${url} | grep Total)
   echo -n ${out} | sed "s/^.*: \([0-9]*\).*$/\1,/g"
-  echo ${out} | grep " ${count}\$" > /dev/null && break
+  echo ${out} | grep " ${numMsgs}\$" > /dev/null && break
   sleep 5
 done
 echo

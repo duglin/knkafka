@@ -5,8 +5,9 @@ metadata:
 spec:
   consumerGroup: knative-group
   bootstrapServers: SERVER:9092
-  # topics: u1t1,u1t2,u2t1,u2t2
-  topics: u1t1
+  # bootstrapServers: 52.116.214.6:9092,,,
+  topics: TOPICS
+  # topics: u1t1,
   sink:
     ref:
       apiVersion: serving.knative.dev/v1
