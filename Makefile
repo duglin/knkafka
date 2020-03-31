@@ -33,6 +33,9 @@ admin: admin.go
 watch: admin
 	watch -n 5 'curl -s $(shell kubectl get ksvc/knkafkaconsole -o jsonpath={.status.url}) ; echo ; kubectl get pods ;  echo ; ./admin | grep size'
 
+watchkafka: admin
+	watch -n 5 './admin | grep size'
+
 clean:
 	-kubectl delete -f source.yaml > /dev/null 2>&1
 	-kubectl delete -f knservices.yaml

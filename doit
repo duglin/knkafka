@@ -5,7 +5,7 @@ partitions=100     # 250
 load=5000         # 250000
 users=10
 topics=2
-sources=2
+sources=1
 
 numMsgs=$(( ${users} * ${topics} * ${load} ))
 

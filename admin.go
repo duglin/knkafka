@@ -115,13 +115,15 @@ func main() {
 					err = admin.DeleteTopic(topic)
 					if err != nil {
 						time.Sleep(time.Second)
-						// fmt.Printf("Error deleteing topic %q: %s\n", topic, err)
+						fmt.Printf("Error deleteing topic %q: %s\n", topic, err)
 						// os.Exit(1)
 					}
 					wg.Done()
 				}(topic)
 			}
 			wg.Wait()
+			time.Sleep(5 * time.Second)
+			// Now do it again just to make sure
 		}
 	} else if len(os.Args) == 1 || os.Args[1] == "list" {
 		admin, err := sarama.NewClusterAdmin([]string{server}, config)

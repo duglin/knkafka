@@ -45,16 +45,20 @@ func main() {
 		// Report status
 		url := "http://knkafkaconsole.default.svc.cluster.local"
 		url += fmt.Sprintf("?done=%s", topic)
-		for tries := 0; tries < 3; tries++ {
+
+		for tries := 0; ; tries++ {
 			res, err := http.Get(url)
 			if err == nil && res != nil && res.StatusCode/100 == 2 {
+				break
+			}
+			// fmt.Printf("Error setting stats: %s %#v\n", err, res)
+			if tries == 3 {
+				fmt.Printf("Error: Gave up trying to send status: %s\n", err)
+				w.WriteHeader(500)
 				return
 			}
-			fmt.Printf("Error setting stats: %s %#v\n", err, res)
 			time.Sleep(time.Duration(tries) * time.Second)
 		}
-		fmt.Printf("Gave up trying to send status\n")
-		w.WriteHeader(500)
 	})
 
 	fmt.Print("Listening on port 8080\n")
