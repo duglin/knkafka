@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Shopify/sarama"
@@ -87,6 +88,40 @@ func main() {
 				fstr := fmt.Sprintf("    - %%%dd: %%d\n", chars)
 				fmt.Printf(fstr, p, sizes[p])
 			}
+		}
+	} else if len(os.Args) == 1 || os.Args[1] == "clean" {
+		admin, err := sarama.NewClusterAdmin([]string{server}, config)
+		if err != nil {
+			fmt.Printf("Admin: %s\n", err)
+			os.Exit(1)
+		}
+		defer admin.Close()
+		for {
+			topics, err := admin.ListTopics()
+			if err != nil {
+				fmt.Printf("Topics: %s\n", err)
+				os.Exit(1)
+			}
+			if len(topics) == 0 {
+				break
+			}
+
+			wg := sync.WaitGroup{}
+			for topic, _ := range topics {
+				fmt.Printf("Deleting topic: %s\n", topic)
+
+				wg.Add(1)
+				go func(topic string) {
+					err = admin.DeleteTopic(topic)
+					if err != nil {
+						time.Sleep(time.Second)
+						// fmt.Printf("Error deleteing topic %q: %s\n", topic, err)
+						// os.Exit(1)
+					}
+					wg.Done()
+				}(topic)
+			}
+			wg.Wait()
 		}
 	} else if len(os.Args) == 1 || os.Args[1] == "list" {
 		admin, err := sarama.NewClusterAdmin([]string{server}, config)
@@ -170,20 +205,26 @@ func main() {
 		}
 	} else if len(os.Args) > 1 && os.Args[1] == "add-topic" {
 		var err error
+		num := 1
 
-		if len(os.Args) != 3 && len(os.Args) != 4 {
-			fmt.Printf("Usage: %s %s TOPIC [NUM_PARTITIONS]\n",
+		if len(os.Args) < 3 {
+			fmt.Printf("Usage: %s %s [NUM_PARTITIONS] TOPIC ...\n",
 				os.Args[0], os.Args[1])
 			os.Exit(1)
 		}
 
-		num := 1
-		if len(os.Args) == 4 {
-			num, err = strconv.Atoi(os.Args[3])
-			if err != nil {
-				fmt.Printf("%q isn't a valid number of partitions", os.Args[3])
-			}
+		tmpNum, err := strconv.Atoi(os.Args[2])
+		if err == nil {
+			num = tmpNum
 		}
+
+		if len(os.Args) < 4 {
+			fmt.Printf("Usage: %s %s [NUM_PARTITIONS] TOPIC ...\n",
+				os.Args[0], os.Args[1])
+			os.Exit(1)
+		}
+
+		topics := os.Args[3:]
 
 		admin, err := sarama.NewClusterAdmin([]string{server}, config)
 		if err != nil {
@@ -192,33 +233,43 @@ func main() {
 		}
 		defer admin.Close()
 
-		topic := os.Args[2]
 		topicDetail := sarama.TopicDetail{
 			NumPartitions:     int32(num),
 			ReplicationFactor: 1,
 		}
 
-		err = admin.CreateTopic(topic, &topicDetail, false)
-		if err != nil {
-			fmt.Printf("Error creating topic %q: %s\n", topic, err)
-			os.Exit(1)
+		for _, topic := range topics {
+			err = admin.CreateTopic(topic, &topicDetail, false)
+			if err != nil {
+				time.Sleep(5 * time.Second)
+				err = admin.CreateTopic(topic, &topicDetail, false)
+				if err != nil {
+					fmt.Printf("Error creating topic %q: %s\n", topic, err)
+				}
+				os.Exit(1)
+			}
 		}
 	} else if len(os.Args) > 1 && os.Args[1] == "load" {
 		var err error
 
-		if len(os.Args) != 3 && len(os.Args) != 4 {
-			fmt.Printf("Usage: %s %s TOPIC NUM_MSGS\n",
+		if len(os.Args) < 4 {
+			fmt.Printf("Usage: %s %s NUM_MSGS TOPIC ...\n",
 				os.Args[0], os.Args[1])
 			os.Exit(1)
 		}
 
-		num := 1
-		if len(os.Args) == 4 {
-			num, err = strconv.Atoi(os.Args[3])
-			if err != nil {
-				fmt.Printf("%q isn't a valid number of messages", os.Args[3])
-			}
+		num, err := strconv.Atoi(os.Args[2])
+		if err != nil {
+			fmt.Printf("%q isn't a valid number of messages: %s\n",
+				os.Args[2], err)
+			os.Exit(1)
 		}
+		if num < 0 {
+			fmt.Printf("Invalid number of messages: %s\n", os.Args[2])
+			os.Exit(1)
+		}
+
+		topics := os.Args[3:]
 
 		config.Producer.Return.Successes = true
 		client, err := sarama.NewSyncProducer([]string{server}, config)
@@ -228,42 +279,33 @@ func main() {
 		}
 		defer client.Close()
 
-		topic := os.Args[2]
-		count := 0
-		countMutex := sync.Mutex{}
-		wg := sync.WaitGroup{}
+		concurrent := int64(0)
 
-		for i := 0; i < num; i++ {
-			if count >= 200 {
-				time.Sleep(100 * time.Millisecond)
-				i--
-				continue
+		for _, topic := range topics {
+			for i := 0; i < num; i++ {
+				for concurrent >= 600 {
+					time.Sleep(100 * time.Millisecond)
+				}
+
+				atomic.AddInt64(&concurrent, 1)
+
+				go func(topic string, i int) {
+					text := fmt.Sprintf("%s %d", topic, i) // TOPIC i
+					msg := sarama.ProducerMessage{
+						Topic: topic,
+						Value: sarama.StringEncoder(text),
+					}
+					_, _, err = client.SendMessage(&msg)
+					if err != nil {
+						fmt.Printf("Error sending msg: %s\n", err)
+						os.Exit(1)
+					}
+					atomic.AddInt64(&concurrent, -1)
+				}(topic, i)
 			}
-
-			countMutex.Lock()
-			count++
-			wg.Add(1)
-			countMutex.Unlock()
-			go func() {
-				text := fmt.Sprintf("%s %d", topic, i) // TOPIC i
-				msg := sarama.ProducerMessage{
-					Topic: topic,
-					Value: sarama.StringEncoder(text),
-				}
-				_, _, err = client.SendMessage(&msg)
-				if err != nil {
-					fmt.Printf("Error sending msg: %s\n", err)
-					os.Exit(1)
-				}
-				countMutex.Lock()
-				count--
-				wg.Done()
-				countMutex.Unlock()
-			}()
 		}
-		wg.Wait()
-		if count != 0 {
-			fmt.Printf("Something is wrong: %d\n", count)
+		for concurrent > 0 {
+			time.Sleep(100 * time.Millisecond)
 		}
 	} else {
 		fmt.Printf("Unknown command: %s\n", os.Args[1])

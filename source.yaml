@@ -1,13 +1,17 @@
 apiVersion: sources.knative.dev/v1alpha1
 kind: KafkaSource
 metadata:
-  name: kafka-source
+  name: ksSOURCE_NUM
+  # annotations:
+    # autoscaling.knative.dev/minScale: "0"
+    # autoscaling.knative.dev/maxScale: "10"
+    # autoscaling.knative.dev/class: keda.autoscaling.knative.dev
+    # keda.autoscaling.knative.dev/pollingInterval: "2"
+    # keda.autoscaling.knative.dev/cooldownPeriod: "15"
 spec:
   consumerGroup: knative-group
   bootstrapServers: SERVER:9092
-  # bootstrapServers: 52.116.214.6:9092,,,
   topics: TOPICS
-  # topics: u1t1,
   sink:
     ref:
       apiVersion: serving.knative.dev/v1

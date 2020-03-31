@@ -3,6 +3,9 @@ apiVersion: apps/v1
 metadata:
   name: zookeeper-deployment
 spec:
+  selector:
+    matchLabels:
+      app: zookeeper
   template:
     metadata:
       labels:

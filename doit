@@ -1,78 +1,94 @@
 #!/bin/bash
 set -e
 
-partitions=200     # 250
+partitions=100     # 250
 load=5000         # 250000
 users=10
 topics=2
+sources=2
+
 numMsgs=$(( ${users} * ${topics} * ${load} ))
 
-url=http://knkafkaconsole-default.kndev.us-south.containers.appdomain.cloud/
+console=$(kubectl get ksvc/knkafkaconsole -o custom-columns=x:.status.url --no-headers)
 
 echo Cleaning...
-curl -s http://knkafkaconsole-default.kndev.us-south.containers.appdomain.cloud?clear=1
-seq 1 ${users} | while read u ; do
-  seq 1 ${topics} | while read t ; do
-    ./admin del-topic u${u}t${t} > /dev/null 2>&1 || true
-  done
-done
-kubectl delete -f source.yaml > /dev/null 2>&1 || true
+curl -s ${console}?clear=1
+./admin clean
+kubectl delete kafkasources.sources.knative.dev --all > /dev/null 2>&1 || true
 
-echo Hit enter to load
+echo -e \\nHit enter to create topics and partitions
 read a
 
-echo Adding topic and sleep for 5
+echo Adding topics
 sourceTopics=$(
 seq 1 ${users} | while read u ; do
   seq 1 ${topics} | while read t ; do
-    ./admin add-topic u${u}t${t} ${partitions}
-	echo -n "u${u}t${t},"
+    echo -n "u${u}t${t},"
+  done
+done
+)
+sourceTopics=${sourceTopics%,}
+echo sourceTopics:${sourceTopics}
+
+topicsArray=$(
+seq 1 ${users} | while read u ; do
+  seq 1 ${topics} | while read t ; do
+    echo -n "u${u}t${t}" " "
   done
 done
 )
 
-sourceTopics=${sourceTopics%,}
+echo -e \\n./admin add-topic ${partitions} ${topicsArray[@]}
+./admin add-topic ${partitions} ${topicsArray[@]}
 
-echo sourceTopics:${sourceTopics}
-sleep 5
+echo -e \\nPress enter to load
+read p
 
-echo
-echo Loading ${load} messages
+echo -e \\nLoading ${load} messages
 echo "Start date: `date`"
-seq 1 ${users} | while read u ; do
-  seq 1 ${topics} | while read t ; do
-    ./admin load u${u}t${t} ${load}
-  done
-done
+# seq 1 ${users} | while read u ; do
+  # seq 1 ${topics} | while read t ; do
+    # ./admin load u${u}t${t} ${load}
+  # done
+# done
+
+echo -e \\n./admin load ${load} ${topicsArray[@]}
+./admin load ${load} ${topicsArray[@]}
+
 echo "End   date: `date`"
 
-echo How many were actually added
+echo -e \\nHow many were actually added
 # ./admin | grep u1t1.*size
 count=$(./admin | grep "u[0-9]*t[0-9]*.*size" | sed "s/^.*size: \([0-9]*\).*$/\1/")
 echo "--> ${count}"
 echo "Should be: ${numMsgs}"
 echo
 
-echo Hit enter to start processing...
+echo -e \\nHit enter to start processing...
 read a
 
 echo Creating Kafka event source
 SERVER=$(kubectl describe service/kafka-service | grep Ingress | sed "s/.*: *//")
-cat source.yaml | sed "s/SERVER/$SERVER/g" | sed "s/TOPICS/${sourceTopics}/" | \
-	kubectl apply -f -
-echo
+echo SERVER=:${SERVER}:
+seq 1 ${sources} | while read n ; do
+  echo Creating source: ${n}
+  cat source.yaml | \
+    sed "s/SERVER/${SERVER}/g" | \
+    sed "s/TOPICS/${sourceTopics}/" | \
+    sed "s/SOURCE_NUM/${n}/" | \
+      kubectl apply -f -
+  echo
+done
 
 echo "Waiting for it to finish..."
 echo "Start date: `date`"
 while true ; do
-  out=$(curl -qs ${url} | grep Total)
+  out=$(curl -qs ${console} | grep Total)
   echo -n ${out} | sed "s/^.*: \([0-9]*\).*$/\1,/g"
   echo ${out} | grep " ${numMsgs}\$" > /dev/null && break
   sleep 5
 done
-echo
-echo "End   date: `date`"
+echo -e \\n"End   date: `date`"
 
-echo
-echo Check the pod logs for errors
+echo -e \\nCheck the pod logs for errors
 kubectl logs -l serving.knative.dev/service=knkafkaservice -c user-container 
