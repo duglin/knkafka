@@ -15,6 +15,7 @@ echo Cleaning...
 curl -s ${console}?clear=1
 ./admin clean
 kubectl delete kafkasources.sources.knative.dev --all > /dev/null 2>&1 || true
+kubectl delete kafkasource.sources.knative.dev --all > /dev/null 2>&1 || true
 
 echo -e \\nHit enter to create topics and partitions
 read a

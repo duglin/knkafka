@@ -43,6 +43,7 @@ func main() {
 
 	config := sarama.NewConfig()
 	config.Version = sarama.V1_0_0_0
+	config.Admin.Timeout = 10 * time.Second
 
 	if len(os.Args) == 1 || os.Args[1] == "list" {
 		client, err := sarama.NewClient([]string{server}, config)
