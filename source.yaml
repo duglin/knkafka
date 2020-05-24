@@ -10,8 +10,8 @@ metadata:
     # keda.autoscaling.knative.dev/cooldownPeriod: "15"
 spec:
   consumerGroup: knative-group
-  bootstrapServers: SERVER:9092
-  topics: TOPICS
+  bootstrapServers: [ SERVER:9092 ]
+  topics: [ TOPICS ]
   sink:
     ref:
       apiVersion: serving.knative.dev/v1

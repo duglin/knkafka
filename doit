@@ -77,6 +77,7 @@ seq 1 ${sources} | while read n ; do
     sed "s/SERVER/${SERVER}/g" | \
     sed "s/TOPICS/${sourceTopics}/" | \
     sed "s/SOURCE_NUM/${n}/" | \
+	  tee s | \
       kubectl apply -f -
   echo
 done
